@@ -132,46 +132,69 @@ df_cleaned = clean_and_transform(df)
 df_aggregated = aggregate_data(df_cleaned)
 
 # ============================ MATPLOTLIB ============================
-def plot_average_ratings(dataframe):
-    plt.figure(figsize=(10, 5))
-    plt.bar(dataframe['book_author'], dataframe['rating'], color='skyblue')
-    plt.title('Average Ratings by Author')
-    plt.xlabel('Author')
-    plt.ylabel('Average Rating')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
 
-def plot_total_ratings(dataframe):
-    plt.figure(figsize=(10, 5))
-    plt.plot(dataframe['book_author'], dataframe['num_ratings'], marker='o', color='green')
-    plt.title('Total Ratings by Author')
-    plt.xlabel('Author')
-    plt.ylabel('Total Ratings')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
+def remove_duplicates(dataframe):
+    return dataframe.drop_duplicates(subset=['book_title', 'book_author'])
 
-def plot_hist2d(dataframe):
-    plt.figure(figsize=(10, 6))
-    plt.hist2d(
-        dataframe['num_ratings'], 
-        dataframe['rating'], 
-        bins=(50, 20), 
-        cmap='Blues'
-    )
-    plt.colorbar(label='Frequency')
-    plt.title('2D Histogram: Rating vs. Number of Ratings')
-    plt.xlabel('Number of Ratings')
-    plt.ylabel('Average Rating')
-    plt.tight_layout()
+def get_top_authors(dataframe, top_n=15):
+    return dataframe.groupby('book_author').agg({
+        'rating': 'mean',
+        'num_ratings': 'sum'
+    }).nlargest(top_n, 'num_ratings').reset_index()
+
+def prepare_boxplot_data(dataframe):
+    dataframe = remove_duplicates(dataframe)
+    grouped = dataframe.groupby('book_author')['rating'].apply(list).reset_index()
+    grouped = grouped[grouped['rating'].map(len) > 1]
+    return grouped
 
 def plot_boxplot(dataframe):
-    plt.figure(figsize=(10, 6))
-    dataframe.boxplot(column='rating', by='book_author', grid=False, patch_artist=True)
-    plt.title('Boxplot of Ratings by Author')
-    plt.suptitle('') 
+    dataframe = get_top_authors(dataframe)
+    dataframe = prepare_boxplot_data(dataframe)
+
+    if dataframe.empty:
+        return
+
+    plt.figure(figsize=(12, 6))
+    plt.boxplot(dataframe['rating'], patch_artist=True, labels=dataframe['book_author'])
+    plt.title('Boxplot of Ratings (Top Authors with Multiple Books)')
     plt.xlabel('Author')
     plt.ylabel('Rating')
     plt.xticks(rotation=45, fontsize=8)
+    plt.tight_layout()
+
+
+def normalize_num_ratings(dataframe):
+    max_value = dataframe['num_ratings'].max()
+    min_value = dataframe['num_ratings'].min()
+    
+    if max_value == min_value: 
+        dataframe['num_ratings_scaled'] = 0.5
+    else:
+        dataframe['num_ratings_scaled'] = (dataframe['num_ratings'] - min_value) / (max_value - min_value)
+    return dataframe
+
+
+
+def plot_hist2d(dataframe):
+    dataframe = get_top_authors(dataframe)
+    dataframe = normalize_num_ratings(dataframe)
+    
+    if dataframe.empty:
+        print("Dataframe is empty. No data to plot.")
+        return
+
+    plt.figure(figsize=(10, 6))
+    plt.hist2d(
+        dataframe['num_ratings_scaled'], 
+        dataframe['rating'], 
+        bins=(15, 15), 
+        cmap='Blues'
+    )
+    plt.colorbar(label='Frequency')
+    plt.title('2D Histogram: Scaled Rating vs. Number of Ratings (Top Authors)')
+    plt.xlabel('Scaled Number of Ratings')
+    plt.ylabel('Average Rating')
     plt.tight_layout()
 
 
@@ -179,26 +202,8 @@ def plot_boxplot(dataframe):
 app = Flask(__name__)
 plt.switch_backend('Agg')
 
-@app.route('/average_ratings')
-def average_ratings():
-    plot_average_ratings(df_aggregated)
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    plt.close()
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
-
-@app.route('/total_ratings')
-def total_ratings():
-    plot_total_ratings(df_aggregated)
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    plt.close()
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
-
 @app.route('/hist2d')
-def hist2d():
+def hist2d_top():
     plot_hist2d(df_cleaned)
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
@@ -207,7 +212,7 @@ def hist2d():
     return send_file(buf, mimetype='image/png')
 
 @app.route('/boxplot')
-def boxplot():
+def boxplot_top():
     plot_boxplot(df_cleaned)
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
@@ -215,11 +220,9 @@ def boxplot():
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
 
-
 @app.route('/')
 def home():
-    return "Welcome to the Book Data Visualization API! Use /average_ratings or /total_ratings to view visualizations."
-
+    return "Welcome! Use /hist2d or /boxplot to view visualizations."
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
