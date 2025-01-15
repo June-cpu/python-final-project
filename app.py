@@ -150,6 +150,31 @@ def plot_total_ratings(dataframe):
     plt.xticks(rotation=45)
     plt.tight_layout()
 
+def plot_hist2d(dataframe):
+    plt.figure(figsize=(10, 6))
+    plt.hist2d(
+        dataframe['num_ratings'], 
+        dataframe['rating'], 
+        bins=(50, 20), 
+        cmap='Blues'
+    )
+    plt.colorbar(label='Frequency')
+    plt.title('2D Histogram: Rating vs. Number of Ratings')
+    plt.xlabel('Number of Ratings')
+    plt.ylabel('Average Rating')
+    plt.tight_layout()
+
+def plot_boxplot(dataframe):
+    plt.figure(figsize=(10, 6))
+    dataframe.boxplot(column='rating', by='book_author', grid=False, patch_artist=True)
+    plt.title('Boxplot of Ratings by Author')
+    plt.suptitle('') 
+    plt.xlabel('Author')
+    plt.ylabel('Rating')
+    plt.xticks(rotation=45, fontsize=8)
+    plt.tight_layout()
+
+
 # ============================ FLASK API ============================
 app = Flask(__name__)
 plt.switch_backend('Agg')
@@ -171,6 +196,25 @@ def total_ratings():
     plt.close()
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
+
+@app.route('/hist2d')
+def hist2d():
+    plot_hist2d(df_cleaned)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
+
+@app.route('/boxplot')
+def boxplot():
+    plot_boxplot(df_cleaned)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
+
 
 @app.route('/')
 def home():
